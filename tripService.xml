@@ -1,0 +1,1184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse"
+     name="tripService"
+     context="/trip">
+   <resource methods="POST" uri-template="/v1" faultSequence="FaultForAddTrip">
+      <inSequence>
+         <property name="REST_URL_POSTFIX" scope="axis2" action="remove"/>
+         <property xmlns:ns="http://org.apache.synapse/xsd"
+                   name="startTime"
+                   expression="get-property(&#34;SYSTEM_DATE&#34; ,&#34;yyyy/MM/dd - HH:mm:ss.SSS&#34;)"
+                   scope="default"
+                   type="STRING"/>
+         <property name="payloadRq"
+                   expression="$body/child::node()"
+                   scope="default"
+                   type="STRING"/>
+         <property name="service"
+                   value="AddTripService"
+                   scope="default"
+                   type="STRING"/>
+         <property name="step"
+                   value="ESB AddTripService"
+                   scope="default"
+                   type="STRING"/>
+         <property name="Success" value="false" scope="default" type="BOOLEAN"/>
+         <property name="regioncode"
+                   expression="$trp:datacenter"
+                   scope="default"
+                   type="STRING"/>
+         <property name="transId"
+                   expression="$trp:tranid"
+                   scope="default"
+                   type="STRING"/>
+         <property name="loglevel"
+                   expression="$trp:loglevel"
+                   scope="default"
+                   type="STRING"/>
+         <property name="system"
+                   expression="$trp:system"
+                   scope="default"
+                   type="STRING"/>
+         <property name="ProcessName"
+                   value="AddTrip"
+                   scope="default"
+                   type="STRING"/>
+         <property name="restartpoint" value="RP2" scope="default" type="STRING"/>
+         <log>
+            <property name="REGIONCODE" expression="get-property('regioncode')"/>
+            <property name="TRANSID" expression="get-property('transId')"/>
+            <property name="LOGLEVEL" expression="get-property('loglevel')"/>
+            <property name="SYSTEM" expression="get-property('system')"/>
+         </log>
+         <enrich>
+            <source type="body" clone="true"/>
+            <target type="property" property="ORIGREQUEST"/>
+         </enrich>
+         <property name="REQUEST" value="true"/>
+         <property name="ComponentName"
+                   value="SaveInOPSDB"
+                   scope="default"
+                   type="STRING"/>
+         <filter source="name($body/OTA_TravelItineraryRS)"
+                 regex="OTA_TravelItineraryRS">
+            <then>
+               <call>
+                  <endpoint key="SaveInOPSDBService"/>
+               </call>
+               <property xmlns:ns="http://org.apache.synapse/xsd"
+                         name="SaveInOPSDBflag"
+                         expression="$body/saveinopsdbResponse/Success/text()"
+                         scope="default"
+                         type="STRING"/>
+               <filter source="get-property('SaveInOPSDBflag')" regex="True">
+                  <then>
+                     <property name="ComponentName"
+                               value="AddTripProcessor"
+                               scope="default"
+                               type="STRING"/>
+                     <sequence key="CallAsyncTripSequence"/>
+                     <payloadFactory media-type="xml">
+                        <format>
+                           <AddtripResponse>
+                              <Success>True</Success>
+                              <TransactionID>$1</TransactionID>
+                           </AddtripResponse>
+                        </format>
+                        <args>
+                           <arg evaluator="xml" expression="get-property('transId')"/>
+                        </args>
+                     </payloadFactory>
+                     <property name="messageType" value="application/xml" scope="axis2"/>
+                     <property name="successFlag"
+                               value="Success"
+                               scope="default"
+                               type="STRING"/>
+                     <property name="AsyncFlag" value="true" scope="default" type="STRING"/>
+                     <sequence key="AuditSequence"/>
+                     <send/>
+                  </then>
+                  <else>
+                     <sequence key="MSFaultSequenceForAddTrip"/>
+                  </else>
+               </filter>
+            </then>
+            <else>
+               <payloadFactory media-type="xml">
+                  <format>
+                     <AddtripResponse>
+                        <Success>False</Success>
+                        <TripError>
+                           <ErrorCode>E01</ErrorCode>
+                           <ErrorMessage>Invalid OTA xml.</ErrorMessage>
+                        </TripError>
+                     </AddtripResponse>
+                  </format>
+                  <args/>
+               </payloadFactory>
+               <respond/>
+            </else>
+         </filter>
+      </inSequence>
+   </resource>
+   <resource methods="POST" uri-template="/pnrenricherprocessor/v1">
+      <inSequence>
+         <log>
+            <property name="request" value="INADDTRIPAPI"/>
+         </log>
+         <property name="RqPayload"
+                   expression="$body/child::node()"
+                   scope="default"
+                   type="STRING"/>
+         <iterate id="pid1"
+                  preservePayload="true"
+                  expression="//*[local-name()='PnrEnricherProcessorRequest']/*[local-name()='rawmessages']/*[local-name()='rawmsg']"
+                  sequential="true">
+            <target sequence="anon">
+               <sequence>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="gds"
+                            expression="//*[local-name()='rawmsg']/@gds"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="recordlocator"
+                            expression="//*[local-name()='rawmsg']/@recordlocator"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="bookingpcc"
+                            expression="//*[local-name()='rawmsg']/bookingpcc"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="datacentercode"
+                            expression="//*[local-name()='rawmsg']/datacentercode"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="txndtl"
+                            expression="//*[local-name()='rawmsg']/txndtl"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="receiveddate"
+                            expression="//*[local-name()='rawmsg']/receiveddate"/>
+                  <property xmlns:ns="http://org.apache.synapse/xsd"
+                            name="enrichmentdate"
+                            expression="//*[local-name()='rawmsg']/enrichmentdate"/>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <PNREnicherRequest xmlns="">
+                           <gds>$1</gds>
+                           <recordlocator>$2</recordlocator>
+                           <bookingpcc>$3</bookingpcc>
+                           <datacentercode>$4</datacentercode>
+                           <receiveddate>$5</receiveddate>
+                        </PNREnicherRequest>
+                     </format>
+                     <args>
+                        <arg xmlns:ns="http://org.apache.synapse/xsd"
+                             evaluator="xml"
+                             expression="get-property('gds')"/>
+                        <arg xmlns:ns="http://org.apache.synapse/xsd"
+                             evaluator="xml"
+                             expression="get-property('recordlocator')"/>
+                        <arg xmlns:ns="http://org.apache.synapse/xsd"
+                             evaluator="xml"
+                             expression="get-property('bookingpcc')"/>
+                        <arg xmlns:ns="http://org.apache.synapse/xsd"
+                             evaluator="xml"
+                             expression="get-property('datacentercode')"/>
+                        <arg xmlns:ns="http://org.apache.synapse/xsd"
+                             evaluator="xml"
+                             expression="get-property('txndtl')"/>
+                     </args>
+                  </payloadFactory>
+                  <header xmlns:ns="http://org.apache.synapse/xsd"
+                          name="tranid"
+                          scope="transport"
+                          expression="$trp:tranid"/>
+                  <header xmlns:ns="http://org.apache.synapse/xsd"
+                          name="loglevel"
+                          scope="transport"
+                          expression="$trp:loglevel"/>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <PnrEnricherResponse xmlns="">
+                           <success>true</success>
+                        </PnrEnricherResponse>
+                     </format>
+                     <args/>
+                  </payloadFactory>
+                  <!--                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     <call>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            <endpoint>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     <http method="POST" uri-template="http://localhost:7003/sst/v1"/>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            </endpoint>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   </call>  --><filter source="$body/PnrEnricherResponse/success/text()" regex="true">
+                     <then>
+                        <property name="GDS"
+                                  expression="get-property('gds')"
+                                  scope="default"
+                                  type="STRING"/>
+                        <property name="recordLocator"
+                                  expression="get-property('recordlocator')"
+                                  scope="default"
+                                  type="STRING"/>
+                        <class name="com.aegbt.gtr.esb.rawmsgprocess.GTRDispatcher">
+                           <property name="status" value="Delivered"/>
+                           <property name="processName" value="UPDATE_STATUS"/>
+                        </class>
+                     </then>
+                     <else/>
+                  </filter>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <rawmsg xmlns="">
+                           <gds>$1</gds>
+                           <recordlocator>$2</recordlocator>
+                           <success>$3</success>
+                        </rawmsg>
+                     </format>
+                     <args>
+                        <arg evaluator="xml" expression="get-property('gds')"/>
+                        <arg evaluator="xml" expression="get-property('recordlocator')"/>
+                        <arg evaluator="xml" expression="$body/PnrEnricherResponse/success/text()"/>
+                     </args>
+                  </payloadFactory>
+                  <aggregate id="pid1">
+                     <completeCondition>
+                        <messageCount min="-1" max="-1"/>
+                     </completeCondition>
+                     <onComplete xmlns:s11="http://schemas.xmlsoap.org/soap/envelope/"
+                                 expression="//s11:Body/child::node()">
+                        <payloadFactory media-type="xml">
+                           <format>
+                              <rawmessages>$1</rawmessages>
+                           </format>
+                           <args>
+                              <arg evaluator="xml" expression="$body/"/>
+                           </args>
+                        </payloadFactory>
+                        <xslt key="constructPNREnricherProcResponse"/>
+                        <property name="messageType" value="application/xml" scope="axis2"/>
+                        <respond/>
+                     </onComplete>
+                  </aggregate>
+               </sequence>
+            </target>
+         </iterate>
+      </inSequence>
+   </resource>
+   <resource methods="POST"
+             uri-template="/processor/v1"
+             faultSequence="FaultForAddTrip">
+      <inSequence>
+         <property name="REST_URL_POSTFIX" scope="axis2" action="remove"/>
+         <property xmlns:ns="http://org.apache.synapse/xsd"
+                   name="startTime"
+                   expression="get-property(&#34;SYSTEM_DATE&#34; ,&#34;yyyy/MM/dd - HH:mm:ss.SSS&#34;)"
+                   scope="default"
+                   type="STRING"/>
+         <property name="payloadRq"
+                   expression="$body/child::node()"
+                   scope="default"
+                   type="STRING"/>
+         <property name="service"
+                   value="AsyncAddTripService"
+                   scope="default"
+                   type="STRING"/>
+         <property name="step"
+                   value="ESB ProcessAddTripService"
+                   scope="default"
+                   type="STRING"/>
+         <property name="Success" value="false" scope="default" type="BOOLEAN"/>
+         <property name="regioncode"
+                   expression="$trp:regioncode"
+                   scope="default"
+                   type="STRING"/>
+         <property name="transId"
+                   expression="$trp:tranid"
+                   scope="default"
+                   type="STRING"/>
+         <property name="loglevel"
+                   expression="$trp:loglevel"
+                   scope="default"
+                   type="STRING"/>
+         <property name="system"
+                   expression="$trp:system"
+                   scope="default"
+                   type="STRING"/>
+         <property name="ProcessName"
+                   value="AddTrip"
+                   scope="default"
+                   type="STRING"/>
+         <property name="ComponentName"
+                   value="GetTripID"
+                   scope="default"
+                   type="STRING"/>
+         <enrich>
+            <source type="body" clone="true"/>
+            <target type="property" property="ORIGREQUEST"/>
+         </enrich>
+         <enrich>
+            <source type="inline" clone="true">
+               <soapenv:Envelope xmlns:soapenv="http://www.w3.org/2003/05/soap-envelope">
+                  <soapenv:Body/>
+               </soapenv:Envelope>
+            </source>
+            <target type="envelope"/>
+         </enrich>
+         <property name="REQUEST" value="true"/>
+         <property name="uri.var.createdDate"
+                   expression="$ctx:ORIGREQUEST/TravelItinerary/AccessHistory/Created/@Time"
+                   scope="default"
+                   type="STRING"/>
+         <property name="uri.var.source"
+                   expression="$ctx:ORIGREQUEST/PNRRef/@AtlasGDS"
+                   scope="default"
+                   type="STRING"/>
+         <property name="uri.var.recordLoc"
+                   expression="$ctx:ORIGREQUEST/PNRRef/@RecordLocator"
+                   scope="default"
+                   type="STRING"/>
+         <property name="HTTP_METHOD" value="GET" scope="axis2" type="STRING"/>
+         <header name="regioncode"
+                 scope="transport"
+                 expression="get-property('regioncode')"/>
+         <header name="tranid"
+                 scope="transport"
+                 expression="get-property('transId')"/>
+         <header name="loglevel"
+                 scope="transport"
+                 expression="get-property('loglevel')"/>
+         <header name="system" scope="transport" expression="get-property('system')"/>
+         <header name="origin" scope="transport" value="addTrip"/>
+         <header name="processor" scope="transport" value="AddTrip"/>
+         <property name="restartpoint" value="RP3" scope="default" type="STRING"/>
+         <call>
+            <endpoint key="GetTripDataService"/>
+         </call>
+         <property xmlns:ns="http://org.apache.synapse/xsd"
+                   name="tripflag"
+                   expression="$body/tripDataResponse/Success/text()"
+                   scope="default"
+                   type="STRING"/>
+         <filter source="get-property('tripflag')" regex="True">
+            <then>
+               <log>
+                  <property name="****GetTripDataService Resposne *******" expression="$body"/>
+               </log>
+               <sequence key="UpdateTripSequence"/>
+            </then>
+            <else>
+               <sequence key="MSFaultSequenceForAddTrip"/>
+            </else>
+         </filter>
+      </inSequence>
+   </resource>
+   <resource methods="POST" uri-template="/segmentprocessor/v1">
+      <inSequence>
+         <property name="REST_URL_POSTFIX" scope="axis2" action="remove"/>
+         <log>
+            <property name="LOGGING" value="INSIDE INSEQUENCE"/>
+         </log>
+         <header name="processor" scope="transport" value="AddTrip"/>
+         <property name="tripId"
+                   expression="$trp:tripid"
+                   scope="default"
+                   type="STRING"/>
+         <property name="tripidStatus"
+                   expression="$trp:tripIdStatus"
+                   scope="default"
+                   type="STRING"/>
+         <property name="pnr"
+                   expression="//OTA_TravelItineraryRS/PNRRef/@RecordLocator"
+                   scope="default"
+                   type="STRING"/>
+         <property name="createdtime"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/AccessHistory/Created/@Time"
+                   scope="default"
+                   type="STRING"/>
+         <property name="modifieddate"
+                   expression="//OTA_TravelItineraryRS/@TimeStamp"
+                   scope="default"
+                   type="STRING"/>
+         <property name="source"
+                   expression="//OTA_TravelItineraryRS/PNRRef/@AtlasGDS"
+                   scope="default"
+                   type="STRING"/>
+         <property name="modifiedby"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/AccessHistory/Created/Agent/@AgentId"
+                   scope="default"
+                   type="STRING"/>
+         <property name="airCount"
+                   expression="//PNRSegmentMap/AirSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="carCount"
+                   expression="//PNRSegmentMap/CarSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="hotelCount"
+                   expression="//PNRSegmentMap/HotelSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="othCount"
+                   expression="//PNRSegmentMap/OtherSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="railCount"
+                   expression="//PNRSegmentMap/RailSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="limoCount"
+                   expression="//PNRSegmentMap/LimoSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="cruiseCount"
+                   expression="//PNRSegmentMap/CruiseSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="ferryCount"
+                   expression="//PNRSegmentMap/FerrySegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="tourCount"
+                   expression="//PNRSegmentMap/TourSegment"
+                   scope="default"
+                   type="STRING"/>
+         <property name="airSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Air"
+                   scope="default"
+                   type="STRING"/>
+         <property name="carSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Car"
+                   scope="default"
+                   type="STRING"/>
+         <property name="hotelSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Hotel"
+                   scope="default"
+                   type="STRING"/>
+         <property name="othSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/General"
+                   scope="default"
+                   type="STRING"/>
+         <property name="railSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Rail"
+                   scope="default"
+                   type="STRING"/>
+         <property name="limoSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Limo"
+                   scope="default"
+                   type="STRING"/>
+         <property name="cruiseSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Cruise"
+                   scope="default"
+                   type="STRING"/>
+         <property name="ferrySeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Ferry"
+                   scope="default"
+                   type="STRING"/>
+         <property name="tourSeg"
+                   expression="//OTA_TravelItineraryRS/TravelItinerary/ItineraryInfo/ReservationItems/Item/Tour"
+                   scope="default"
+                   type="STRING"/>
+         <script language="js">var air = mc.getProperty('airSeg');var car = mc.getProperty('carSeg');var hotel = mc.getProperty('hotelSeg');var othSeg = mc.getProperty('othSeg');var railSeg = mc.getProperty('railSeg');var limoSeg = mc.getProperty('limoSeg');var cruiseSeg = mc.getProperty('cruiseSeg');var ferrySeg = mc.getProperty('ferrySeg');var tourSeg = mc.getProperty('tourSeg');var airCount = mc.getProperty('airCount');var carCount = mc.getProperty('carCount');var hotelCount = mc.getProperty('hotelCount');var othSegCount = mc.getProperty('othCount');var railSegCount = mc.getProperty('railCount');var limoSegCount = mc.getProperty('limoCount');var cruiseSegCount = mc.getProperty('cruiseCount');var ferrySegCount = mc.getProperty('ferryCount');var tourSegCount = mc.getProperty('tourCount');mc.setProperty('airFlag', 'false');mc.setProperty('carFlag', 'false');mc.setProperty('hotelFlag', 'false');mc.setProperty('othFlag', 'false');mc.setProperty('railFlag', 'false');mc.setProperty('limoFlag', 'false');mc.setProperty('cruiseFlag', 'false');mc.setProperty('ferryFlag', 'false');mc.setProperty('tourFlag', 'false');var airflag = 'false';var i = 5;if ((airCount != null &amp;&amp; airCount != '' &amp;&amp; airCount != '0') || (air != null &amp;&amp; air != '')) {  mc.setProperty('airFlag', 'true');    i = i + 1;}if ((carCount != null &amp;&amp; carCount != '' &amp;&amp; carCount != '0') || (car != null &amp;&amp; car != '')) {  mc.setProperty('carFlag', 'true');    i = i + 1;}if ((hotelCount != null &amp;&amp; hotelCount != '' &amp;&amp; hotelCount != '0') || (hotel != null &amp;&amp; hotel != '')) {  mc.setProperty('hotelFlag', 'true');    i = i + 1;}if ((othSegCount != null &amp;&amp; othSegCount != '' &amp;&amp; othSegCount != '0') || (othSeg != null &amp;&amp; othSeg != '')) {  mc.setProperty('othFlag', 'true');    i = i + 1;}if ((railSegCount != null &amp;&amp; railSegCount != '' &amp;&amp; railSegCount != '0') || (railSeg != null &amp;&amp; railSeg != '')) {  mc.setProperty('railFlag', 'true');    i = i + 1;}if ((limoSegCount != null &amp;&amp; limoSegCount != '' &amp;&amp; limoSegCount != '0') || (limoSeg != null &amp;&amp; limoSeg != '')) {  mc.setProperty('limoFlag', 'true');    i = i + 1;}if ((cruiseSegCount != null &amp;&amp; cruiseSegCount != '' &amp;&amp; cruiseSegCount != '0') || (cruiseSeg != null &amp;&amp; cruiseSeg != '')) {  mc.setProperty('cruiseFlag', 'true');    i = i + 1;}if ((ferrySegCount != null &amp;&amp; ferrySegCount != '' &amp;&amp; ferrySegCount != '0') || (ferrySeg != null &amp;&amp; ferrySeg != '')) {  mc.setProperty('ferryFlag', 'true');    i = i + 1;}if ((tourSegCount != null &amp;&amp; tourSegCount != '' &amp;&amp; tourSegCount != '0') || (tourSeg != null &amp;&amp; tourSeg != '')) {  mc.setProperty('tourFlag', 'true');    i = i + 1;}mc.setProperty('maxNo', i);</script>
+         <clone>
+            <target>
+               <sequence>
+                  <filter source="get-property('airFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 1"/>
+                        </log>
+                        <xslt key="ConstructAirSegmentRq">
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 1"/>
+                           <property name="MAXNOO" expression="get-property('maxNo')"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessAirSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER Calling SERVICE 1"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('hotelFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 2"/>
+                        </log>
+                        <xslt key="ConstructHotelSegmentRq">
+                           <property name="segment" value="Hotel"/>
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 2"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessHotelSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 2"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('carFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 3"/>
+                        </log>
+                        <xslt key="ConstructCarSegmentRq">
+                           <property name="segment" value="Car"/>
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 3"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessCarSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 3"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('railFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 4"/>
+                        </log>
+                        <xslt key="ConstructRailSegmentReq">
+                           <property name="segment" value="Rail"/>
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 4"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessRailSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 4"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <log>
+                     <property name="LOGGING" value="INSIDE PARALLEL TARGET 5"/>
+                  </log>
+                  <xslt key="ConstructCustomerInfoReq">
+                     <property name="segment" value="CustomerInfo"/>
+                     <property name="pnr" expression="get-property('pnr')"/>
+                     <property name="createdtime" expression="get-property('createdtime')"/>
+                     <property name="modifieddate" expression="get-property('modifieddate')"/>
+                     <property name="source" expression="get-property('source')"/>
+                     <property name="modifiedby" expression="get-property('modifiedby')"/>
+                     <property name="tripId" expression="get-property('tripId')"/>
+                     <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  </xslt>
+                  <log level="full">
+                     <property name="LOGGING" value="BEFORE CALLING SERVICE 5"/>
+                  </log>
+                  <send>
+                     <endpoint key="ProcessCustomerInfoService"/>
+                  </send>
+                  <log>
+                     <property name="LOGGING" value="AFTER CALLING SERVICE 5"/>
+                  </log>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('ferryFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 6"/>
+                        </log>
+                        <xslt key="ConstructFerrySegmentReq">
+                           <property name="segment" value="Ferry"/>
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 6"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessFerrySegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 6"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('cruiseFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 7"/>
+                        </log>
+                        <xslt key="ConstructCruiseSegmentRq">
+                           <property name="segment" value="Cruise"/>
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 7"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessCruiseSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 7"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <log>
+                     <property name="LOGGING" value="INSIDE PARALLEL TARGET 8"/>
+                  </log>
+                  <xslt key="ConstructAirTicketSegmentRq">
+                     <property name="segment" value="AirTicketList"/>
+                     <property name="pnr" expression="get-property('pnr')"/>
+                     <property name="createdtime" expression="get-property('createdtime')"/>
+                     <property name="modifieddate" expression="get-property('modifieddate')"/>
+                     <property name="source" expression="get-property('source')"/>
+                     <property name="modifiedby" expression="get-property('modifiedby')"/>
+                     <property name="tripId" expression="get-property('tripId')"/>
+                     <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  </xslt>
+                  <log level="full">
+                     <property name="LOGGING" value="BEFORE CALLING SERVICE 8"/>
+                  </log>
+                  <send>
+                     <endpoint key="ProcessAirTicketListService"/>
+                  </send>
+                  <log>
+                     <property name="LOGGING" value="AFTER CALLING SERVICE 8"/>
+                  </log>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <log>
+                     <property name="LOGGING" value="INSIDE PARALLEL TARGET 9"/>
+                  </log>
+                  <xslt key="ConstructStoredFareSegmentRq">
+                     <property name="segment" value="StoredFare"/>
+                     <property name="pnr" expression="get-property('pnr')"/>
+                     <property name="createdtime" expression="get-property('createdtime')"/>
+                     <property name="modifieddate" expression="get-property('modifieddate')"/>
+                     <property name="source" expression="get-property('source')"/>
+                     <property name="modifiedby" expression="get-property('modifiedby')"/>
+                     <property name="tripId" expression="get-property('tripId')"/>
+                     <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  </xslt>
+                  <log level="full">
+                     <property name="LOGGING" value="BEFORE CALLING SERVICE 9"/>
+                  </log>
+                  <send>
+                     <endpoint key="ProcessStoredFareListService"/>
+                  </send>
+                  <log>
+                     <property name="LOGGING" value="AFTER CALLING SERVICE 9"/>
+                  </log>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('limoFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 10"/>
+                        </log>
+                        <xslt key="ConstructLimoSegmentRq">
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 10"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessLimoSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 10"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('tourFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 11"/>
+                        </log>
+                        <xslt key="ConstructTourSegmentRq">
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 11"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessTourSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 11"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <log>
+                     <property name="LOGGING" value="INSIDE PARALLEL TARGET 12"/>
+                  </log>
+                  <xslt key="ConstructAccountProfileSegmentRq">
+                     <property name="pnr" expression="get-property('pnr')"/>
+                     <property name="createdtime" expression="get-property('createdtime')"/>
+                     <property name="modifieddate" expression="get-property('modifieddate')"/>
+                     <property name="source" expression="get-property('source')"/>
+                     <property name="modifiedby" expression="get-property('modifiedby')"/>
+                     <property name="tripId" expression="get-property('tripId')"/>
+                     <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  </xslt>
+                  <log level="full">
+                     <property name="LOGGING" value="BEFORE CALLING SERVICE 12"/>
+                  </log>
+                  <send>
+                     <endpoint key="ProcessAccountProfileService"/>
+                  </send>
+                  <log>
+                     <property name="LOGGING" value="AFTER CALLING SERVICE 12"/>
+                  </log>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <log>
+                     <property name="LOGGING" value="INSIDE PARALLEL TARGET 13"/>
+                  </log>
+                  <xslt key="ConstructInvoiceRemarkSegmentRq">
+                     <property name="pnr" expression="get-property('pnr')"/>
+                     <property name="createdtime" expression="get-property('createdtime')"/>
+                     <property name="modifieddate" expression="get-property('modifieddate')"/>
+                     <property name="source" expression="get-property('source')"/>
+                     <property name="modifiedby" expression="get-property('modifiedby')"/>
+                     <property name="tripId" expression="get-property('tripId')"/>
+                     <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  </xslt>
+                  <log level="full">
+                     <property name="LOGGING" value="BEFORE CALLING SERVICE 13"/>
+                  </log>
+                  <send>
+                     <endpoint key="ProcessInvoiceRemarkListService"/>
+                  </send>
+                  <log>
+                     <property name="LOGGING" value="AFTER CALLING SERVICE 13"/>
+                  </log>
+               </sequence>
+            </target>
+            <target>
+               <sequence>
+                  <filter source="get-property('othFlag')" regex="true">
+                     <then>
+                        <log>
+                           <property name="LOGGING" value="INSIDE PARALLEL TARGET 14"/>
+                        </log>
+                        <xslt key="ConstructOtherSegmentRq">
+                           <property name="pnr" expression="get-property('pnr')"/>
+                           <property name="createdtime" expression="get-property('createdtime')"/>
+                           <property name="modifieddate" expression="get-property('modifieddate')"/>
+                           <property name="source" expression="get-property('source')"/>
+                           <property name="modifiedby" expression="get-property('modifiedby')"/>
+                           <property name="tripId" expression="get-property('tripId')"/>
+                           <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                        </xslt>
+                        <log level="full">
+                           <property name="LOGGING" value="BEFORE CALLING SERVICE 14"/>
+                        </log>
+                        <send>
+                           <endpoint key="ProcessOtherSegmentService"/>
+                        </send>
+                        <log>
+                           <property name="LOGGING" value="AFTER CALLING SERVICE 14"/>
+                        </log>
+                     </then>
+                     <else>
+                        <drop/>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+         </clone>
+      </inSequence>
+      <outSequence>
+         <log level="full">
+            <property name="LOGGING" value="INSIDE OUTSEQUENCE"/>
+         </log>
+         <aggregate>
+            <completeCondition>
+               <messageCount min="{get-property('maxNo')}" max="{get-property('maxNo')}"/>
+            </completeCondition>
+            <onComplete xmlns:s11="http://schemas.xmlsoap.org/soap/envelope/"
+                        expression="//s11:Body/child::node()">
+               <log level="full">
+                  <property name="LOGGIGNG" value="INSIDE AGGREGAOR"/>
+               </log>
+               <payloadFactory media-type="xml">
+                  <format>
+                     <Aggregation xmlns="">$1</Aggregation>
+                  </format>
+                  <args>
+                     <arg evaluator="xml" expression="$body"/>
+                  </args>
+               </payloadFactory>
+               <xslt key="constructSegmentRs">
+                  <property name="pnr" expression="get-property('pnr')"/>
+                  <property name="createdtime" expression="get-property('createdtime')"/>
+                  <property name="modifieddate" expression="get-property('modifieddate')"/>
+                  <property name="source" expression="get-property('source')"/>
+                  <property name="modifiedby" expression="get-property('modifiedby')"/>
+                  <property name="tripId" expression="get-property('tripId')"/>
+                  <property name="tripIdStatus" expression="get-property('tripidStatus')"/>
+                  <property name="ItineraryTriggerChange" value="False"/>
+                  <property name="TriggerChange" value="False"/>
+               </xslt>
+               <send/>
+            </onComplete>
+         </aggregate>
+      </outSequence>
+   </resource>
+   <resource methods="POST" uri-template="/outboundprocessor/v1">
+      <inSequence>
+         <property name="REST_URL_POSTFIX" scope="axis2" action="remove"/>
+         <property name="transId"
+                   expression="$trp:tranid"
+                   scope="default"
+                   type="STRING"/>
+         <property name="loglevel"
+                   expression="$trp:loglevel"
+                   scope="default"
+                   type="STRING"/>
+         <property name="payload"
+                   expression="$body/ProcessRules/OTA_TravelItineraryRS"
+                   scope="default"
+                   type="STRING"/>
+         <iterate xmlns:m0="http://schemas.xmlsoap.org/soap/envelope/"
+                  id="iT"
+                  preservePayload="true"
+                  attachPath="//m0:Body"
+                  expression="//ProcessRules/OTA_TravelItineraryRS/TravelItinerary/AccountProfile/ExtractProductList/Product">
+            <target>
+               <sequence>
+                  <property name="uri.var.product"
+                            expression="//m0:Body/Product"
+                            scope="default"
+                            type="STRING"/>
+                  <enrich>
+                     <source type="body" clone="true"/>
+                     <target type="property" property="Request"/>
+                  </enrich>
+                  <header name="product"
+                          scope="transport"
+                          expression="get-property('uri.var.product')"/>
+                  <header name="tranid"
+                          scope="transport"
+                          expression="get-property('transId')"/>
+                  <header name="loglevel"
+                          scope="transport"
+                          expression="get-property('loglevel')"/>
+                  <property name="Message"
+                            expression="fn:concat('ProductCache', get-property('uri.var.product'))"
+                            scope="default"
+                            type="STRING"/>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <Request xmlns="">$1</Request>
+                     </format>
+                     <args>
+                        <arg evaluator="xml" expression="get-property('Message')"/>
+                     </args>
+                  </payloadFactory>
+                  <call>
+                     <endpoint key="ProductCacheAPI"/>
+                  </call>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <Payload xmlns="">$1$2</Payload>
+                     </format>
+                     <args>
+                        <arg evaluator="xml" expression="get-property('Request')"/>
+                        <arg evaluator="xml" expression="$body/child::node()"/>
+                     </args>
+                  </payloadFactory>
+                  <xslt key="ConstructProductElementsRq"/>
+                  <property name="Elements"
+                            expression="//*[local-name()='TripElements']"
+                            scope="default"
+                            type="STRING"/>
+                  <header name="tranid"
+                          scope="transport"
+                          expression="get-property('transId')"/>
+                  <header name="loglevel"
+                          scope="transport"
+                          expression="get-property('loglevel')"/>
+                  <log level="full">
+                     <property name="PRODUCTTRIGGER RULE"
+                               value="*****************************Start********************************"/>
+                  </log>
+                  <call>
+                     <endpoint key="ProductTriggerRulesService"/>
+                  </call>
+                  <log level="full">
+                     <property name="PRODUCTTRIGGER RULE"
+                               value="*****************************END********************************"/>
+                  </log>
+                  <filter source="//*[local-name()='result']" regex="false">
+                     <then>
+                        <property name="Evaluation" value="Fail" scope="default" type="STRING"/>
+                        <log>
+                           <property name="PRODUCTNAME" expression="get-property('uri.var.product')"/>
+                           <property name="PRODUCT EVALUATION" value="FAIL"/>
+                        </log>
+                     </then>
+                     <else>
+                        <payloadFactory media-type="xml">
+                           <format>
+                              <Elements xmlns="">$1</Elements>
+                           </format>
+                           <args>
+                              <arg evaluator="xml" expression="get-property('Elements')"/>
+                           </args>
+                        </payloadFactory>
+                        <xslt key="ConstructClientRuleRq">
+                           <property name="product" expression="get-property('uri.var.product')"/>
+                        </xslt>
+                        <header name="Authorization"
+                                scope="transport"
+                                value="Basic a2lldXNlcjE6UEBzc3cwcmQxMjM="/>
+                        <log level="full">
+                           <property name="CLIENT RULE"
+                                     value="*****************************Start********************************"/>
+                        </log>
+                        <call>
+                           <endpoint key="ClientRulesService"/>
+                        </call>
+                        <property name="flag"
+                                  expression="//*[local-name()='results']"
+                                  scope="default"
+                                  type="STRING"/>
+                        <script language="js">var flag = mc.getProperty('flag');var term = "Included&gt;false";var index = flag.indexOf(term);mc.setProperty('flag1', 'false');if (index == -1) {    mc.setProperty('flag1', 'true');}</script>
+                        <log level="full">
+                           <property name="CLIENT RULE"
+                                     value="*****************************END********************************"/>
+                        </log>
+                        <filter source="get-property('flag1')" regex="true">
+                           <then>
+                              <header name="product"
+                                      scope="transport"
+                                      expression="get-property('uri.var.product')"/>
+                              <header name="tranid"
+                                      scope="transport"
+                                      expression="get-property('transId')"/>
+                              <header name="loglevel"
+                                      scope="transport"
+                                      expression="get-property('loglevel')"/>
+                              <property name="Message1"
+                                        expression="fn:concat('ProductTransformation', get-property('uri.var.product'))"
+                                        scope="default"
+                                        type="STRING"/>
+                              <payloadFactory media-type="xml">
+                                 <format>
+                                    <Request xmlns="">$1</Request>
+                                 </format>
+                                 <args>
+                                    <arg evaluator="xml" expression="get-property('Message1')"/>
+                                 </args>
+                              </payloadFactory>
+                              <call>
+                                 <endpoint key="ProductTransformationAPI"/>
+                              </call>
+                              <property name="TransformationType"
+                                        expression="//ProductsResponse/Products/Product/Transformationtype"
+                                        scope="default"
+                                        type="STRING"/>
+                              <enrich>
+                                 <source clone="true" xpath="$ctx:Request/OTA_TravelItineraryRS"/>
+                                 <target type="body"/>
+                              </enrich>
+                              <log>
+                                 <property name="*********TRANSFORAMTION TYPE*************"
+                                           expression="get-property('TransformationType')"/>
+                              </log>
+                              <xslt key="{get-property('TransformationType')}"/>
+                              <log>
+                                 <property name="transformed OTA" expression="$body/child::node()"/>
+                              </log>
+                              <property name="payload"
+                                        expression="$body/child::node()"
+                                        scope="default"
+                                        type="STRING"/>
+                              <switch xmlns:ns="http://org.apache.synapse/xsd"
+                                      source="get-property('TransformationType')">
+                                 <case regex="T2">
+                                    <class name="com.aegbt.gtr.esb.msg.encryptor.OutboundMsgEncryptor"/>
+                                    <log level="full">
+                                       <property name="encrypted transformed OTA" expression="get-property('ota')"/>
+                                    </log>
+                                 </case>
+                              </switch>
+                              <log level="full">
+                                 <property name="********TRANSFORAMTION COMPLETED For TYPE*********"
+                                           expression="get-property('TransformationType')"/>
+                              </log>
+                              <log>
+                                 <property name="PRODUCTNAME" expression="get-property('uri.var.product')"/>
+                                 <property name="PRODUCT EVALUATION" value="PASS"/>
+                              </log>
+                              <property name="Evaluation" value="Pass" scope="default" type="STRING"/>
+                           </then>
+                           <else>
+                              <property name="Evaluation" value="Fail" scope="default" type="STRING"/>
+                              <log>
+                                 <property name="PRODUCTNAME" expression="get-property('uri.var.product')"/>
+                                 <property name="PRODUCT EVALUATION" value="FAIL"/>
+                              </log>
+                           </else>
+                        </filter>
+                     </else>
+                  </filter>
+                  <payloadFactory media-type="xml">
+                     <format>
+                        <Product xmlns="">
+                           <Name>$1</Name>
+                           <Result>$2</Result>
+                        </Product>
+                     </format>
+                     <args>
+                        <arg evaluator="xml" expression="get-property('uri.var.product')"/>
+                        <arg evaluator="xml" expression="get-property('Evaluation')"/>
+                     </args>
+                  </payloadFactory>
+                  <aggregate id="iT">
+                     <completeCondition>
+                        <messageCount min="-1" max="-1"/>
+                     </completeCondition>
+                     <onComplete xmlns:s11="http://schemas.xmlsoap.org/soap/envelope/"
+                                 expression="//s11:Body/child::node()">
+                        <payloadFactory media-type="xml">
+                           <format>
+                              <Response xmlns="" type="SUCCESS">$1</Response>
+                           </format>
+                           <args>
+                              <arg evaluator="xml" expression="//*[local-name()='Body']"/>
+                           </args>
+                        </payloadFactory>
+                        <property name="messageType" value="application/xml" scope="axis2"/>
+                        <send/>
+                     </onComplete>
+                  </aggregate>
+               </sequence>
+            </target>
+         </iterate>
+      </inSequence>
+      <outSequence>
+         <aggregate>
+            <completeCondition>
+               <messageCount min="-1" max="-1"/>
+            </completeCondition>
+            <onComplete xmlns:s11="http://schemas.xmlsoap.org/soap/envelope/"
+                        expression="//s11:Body/child::node()">
+               <log>
+                  <property name="AGGREGATPR" value="PASS"/>
+               </log>
+               <send/>
+            </onComplete>
+         </aggregate>
+      </outSequence>
+   </resource>
+   <resource methods="POST"/>
+</api>
