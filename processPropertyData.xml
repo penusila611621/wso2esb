@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<proxy xmlns="http://ws.apache.org/ns/synapse"
+       name="processPropertyData"
+       transports="https http"
+       startOnLoad="true"
+       trace="disable">
+   <description/>
+   <target>
+      <inSequence>
+         <property name="FORCE_SC_ACCEPTED"
+                   value="true"
+                   scope="axis2"
+                   type="STRING"/>
+         <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+         <property name="DATA"
+                   expression="$body/*[local-name()='text']"
+                   scope="default"
+                   type="STRING"/>
+         <property name="fileName"
+                   expression="get-property('transport','FILE_NAME')"
+                   scope="default"
+                   type="STRING"/>
+         <log>
+            <property name="class" expression="$body"/>
+         </log>
+         <class name="com.aegbt.gtr.esb.propertydata.ProcessPropertyFile"/>
+      </inSequence>
+   </target>
+   <parameter name="transport.PollInterval">3000000</parameter>
+   <parameter name="transport.vfs.ActionAfterProcess">MOVE</parameter>
+   <parameter name="transport.vfs.FileURI">/home/azureuser/wso2esb-4.9.0/resources/IN</parameter>
+   <parameter name="transport.vfs.MoveAfterProcess">/home/azureuser/wso2esb-4.9.0/resources/OUT</parameter>
+   <parameter name="transport.vfs.MoveAfterFailure">/home/azureuser/wso2esb-4.9.0/resources/FAIL</parameter>
+   <parameter name="transport.vfs.FileNamePattern">.*.properties</parameter>
+   <parameter name="transport.vfs.ContentType">text/plain</parameter>
+   <parameter name="transport.vfs.ActionAfterFailure">MOVE</parameter>
+</proxy>
