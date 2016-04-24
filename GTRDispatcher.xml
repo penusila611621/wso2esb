@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="GTRDispatcher">
+   <log>
+      <property name="DATA" value="---IN PNR ENRICH SEQUENCE---"/>
+   </log>
+   <class name="com.aegbt.gtr.esb.rawmsgprocess.GTRDispatcher">
+      <property name="status" value=""/>
+      <property name="processName" value="GET_ERROR_RECORDS"/>
+   </class>
+   <enrich>
+      <source type="property" clone="true" property="PnrEnricherProcessorRequests"/>
+      <target type="body"/>
+   </enrich>
+   <iterate xmlns:ns="http://org.apache.synapse/xsd"
+            id="id"
+            expression="$body/*[local-name()='PnrEnricherProcessorRequests']/*[local-name()='PnrEnricherProcessorRequest']"
+            sequential="true">
+      <target>
+         <sequence>
+            <payloadFactory media-type="xml">
+               <format>
+                  <PnrEnricherProcessorRequest>$1</PnrEnricherProcessorRequest>
+               </format>
+               <args>
+                  <arg evaluator="xml"
+                       expression="$body/*[local-name()='PnrEnricherProcessorRequest']/*[local-name()='rawmessages']"/>
+               </args>
+            </payloadFactory>
+            <property name="FORCE_SC_ACCEPTED"
+                      value="false"
+                      scope="axis2"
+                      type="STRING"/>
+            <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+            <call>
+               <endpoint key="pnrEnrichProcessorAPI"/>
+            </call>
+         </sequence>
+      </target>
+   </iterate>
+</sequence>

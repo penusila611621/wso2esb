@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="RawMsgExceptionProcessor">
+   <class name="com.aegbt.gtr.esb.rawmsgexceptionprocessor.RawmsgExceptionProcessor">
+      <property name="processName" value="GET-ERROR-RECORDS"/>
+   </class>
+   <enrich>
+      <source type="property" clone="true" property="errorRecords"/>
+      <target type="body"/>
+   </enrich>
+   <filter xmlns:ns="http://org.apache.synapse/xsd"
+           source="boolean(//ErrorRecords/record)"
+           regex="true">
+      <then>
+         <iterate id="id" expression="//ErrorRecords/record" sequential="true">
+            <target>
+               <sequence>
+                  <property name="uri.var.gds"
+                            expression="//record/gds"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="uri.var.recordLoc"
+                            expression="//record/pnrlocator"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="componentname"
+                            expression="//record/componentname"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="errorcode"
+                            expression="//record/errorcode"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="bookingpcc"
+                            expression="//record/bookingpcc"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="restartpoint"
+                            expression="//record/restartpoint"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="clientdtl"
+                            expression="//record/clientdtl"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="errorcategory"
+                            expression="//record/errorcategory"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="errormessage"
+                            expression="//record/errormessage"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="reporteddate"
+                            expression="//record/reporteddate"
+                            scope="default"
+                            type="STRING"/>
+                  <property name="retrycount"
+                            expression="//record/retrycount"
+                            scope="default"
+                            type="STRING"/>
+                  <class name="com.aegbt.gtr.esb.rawmsgexceptionprocessor.RawmsgExceptionProcessor">
+                     <property name="processName" value="RETRIEVE-RAW-MSG"/>
+                  </class>
+                  <filter source="boolean(get-property('rawmsg'))" regex="true">
+                     <then>
+                        <payloadFactory media-type="xml">
+                           <format>
+                              <RawMessageProcessorRequest xmlns="">
+                                 <source>$1</source>
+                                 <recordLocator>$2</recordLocator>$3$4
+</RawMessageProcessorRequest>
+                           </format>
+                           <args>
+                              <arg evaluator="xml" expression="get-property('uri.var.gds')"/>
+                              <arg evaluator="xml" expression="get-property('uri.var.recordLoc')"/>
+                              <arg evaluator="xml" expression="get-property('rawmsg')"/>
+                              <arg evaluator="xml" expression="get-property('clientIDproperties')"/>
+                           </args>
+                        </payloadFactory>
+                        <header name="mode" scope="transport" value="exception"/>
+                        <header name="componentname"
+                                scope="transport"
+                                expression="get-property('componentname')"/>
+                        <header name="tranid" scope="transport" expression="get-property('txndID')"/>
+                        <header name="loglevel"
+                                scope="transport"
+                                expression="get-property('loglevel')"/>
+                        <header name="system" scope="transport" value="DTR"/>
+                        <header name="datacenter" scope="transport" value="01"/>
+                        <property name="FORCE_SC_ACCEPTED"
+                                  value="false"
+                                  scope="axis2"
+                                  type="STRING"/>
+                        <property name="OUT_ONLY" value="false" scope="default" type="STRING"/>
+                        <call>
+                           <endpoint key="RawMessageProcessorService"/>
+                        </call>
+                        <property name="success"
+                                  expression="//RawMessageProcessorResponse/Success"
+                                  scope="default"
+                                  type="STRING"/>
+                        <class name="com.aegbt.gtr.esb.rawmsgexceptionprocessor.RawmsgExceptionProcessor">
+                           <property name="processName" value="UPDATE-EXCEPTION-LOG"/>
+                        </class>
+                        <log>
+                           <property name="SUCESSS" expression="get-property('success')"/>
+                        </log>
+                        <aggregate id="id">
+                           <completeCondition>
+                              <messageCount min="-1" max="-1"/>
+                           </completeCondition>
+                           <onComplete xmlns:s11="http://schemas.xmlsoap.org/soap/envelope/"
+                                       expression="//s11:Body/child::node()">
+                              <drop/>
+                           </onComplete>
+                        </aggregate>
+                     </then>
+                     <else>
+                        <log>
+                           <property name="STATUS" value="NO RAWMESSAGE FOUND FOR THE RECORD"/>
+                        </log>
+                     </else>
+                  </filter>
+               </sequence>
+            </target>
+         </iterate>
+      </then>
+      <else>
+         <log>
+            <property name="STATUS" value="NO FAILED RECORDS  FOUND IN EXCEPTIONLOG TABLE"/>
+         </log>
+      </else>
+   </filter>
+</sequence>
