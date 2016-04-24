@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<task xmlns="http://ws.apache.org/ns/synapse"
+      name="RawMsgExceptionProcessorJob"
+      class="com.aegbt.gtr.esb.task.ScheduleTask"
+      group="synapse.simple.quartz">
+   <trigger count="1" interval="60"/>
+   <property xmlns:task="http://www.wso2.org/products/wso2commons/tasks"
+             name="sequenceName"
+             value="RawMsgExceptionProcessor"/>
+</task>
